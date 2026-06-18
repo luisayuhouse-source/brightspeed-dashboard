@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Brightspeed Migration Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --blue:    #1a4fa3;
+    --blue-lt: #e8effc;
+    --orange:  #e35a1b;
+    --red:     #c0392b;
+    --red-lt:  #fdf0ee;
+    --green:   #1e7e3e;
+    --green-lt:#eaf6ee;
+    --amber:   #d97706;
+    --amber-lt:#fef3c7;
+    --gray:    #6b7280;
+    --gray-lt: #f3f4f6;
+    --border:  #e5e7eb;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #f0f4f8;
+    color: #111;
+    font-size: 14px;
+  }
+
+  /* ─── Header ─────────────────────────────────────────── */
+  header {
+    background: var(--blue);
+    color: #fff;
+    padding: 18px 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  header h1 { font-size: 20px; font-weight: 700; letter-spacing: -.3px; }
+  header .sub { font-size: 12px; opacity: .75; margin-top: 2px; }
+  .badge-live {
+    background: #fff;
+    color: var(--blue);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 99px;
+    letter-spacing: .5px;
+  }
+
+  /* ─── DCR Banner ─────────────────────────────────────── */
+  .dcr-banner {
+    background: var(--red);
+    color: #fff;
+    padding: 10px 28px;
+    font-size: 13px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .dcr-banner .icon { font-size: 16px; }
+
+  /* ─── Layout ─────────────────────────────────────────── */
+  main { padding: 20px 28px; max-width: 1200px; margin: 0 auto; }
+
+  /* ─── Section labels ─────────────────────────────────── */
+  .section-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .8px;
+    text-transform: uppercase;
+    color: var(--gray);
+    margin: 24px 0 10px;
+  }
+
+  /* ─── KPI row ────────────────────────────────────────── */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+    margin-bottom: 4px;
+  }
+  .kpi {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    text-align: center;
+  }
+  .kpi .num  { font-size: 32px; font-weight: 800; line-height: 1; color: var(--blue); }
+  .kpi .lbl  { font-size: 11px; color: var(--gray); margin-top: 4px; }
+  .kpi.red   .num { color: var(--red); }
+  .kpi.green .num { color: var(--green); }
+  .kpi.amber .num { color: var(--amber); }
+
+  /* ─── Pipeline stages ────────────────────────────────── */
+  .pipeline-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 10px;
+  }
+  .stage-card {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .stage-card .stage-header {
+    padding: 10px 14px 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    user-select: none;
+  }
+  .stage-card .stage-header:hover { background: var(--gray-lt); }
+  .stage-card .stage-name { font-weight: 600; font-size: 12px; }
+  .stage-card .stage-count {
+    font-size: 22px;
+    font-weight: 800;
+    line-height: 1;
+  }
+  .stage-card .arrow { font-size: 11px; color: var(--gray); transition: transform .2s; }
+  .stage-card.open .arrow { transform: rotate(180deg); }
+
+  /* Stage color coding */
+  .stage-card[data-stage="design_review"] .stage-count { color: var(--gray); }
+  .stage-card[data-stage="va_build"]      .stage-count { color: #7c3aed; }
+  .stage-card[data-stage="sit_build"]     .stage-count { color: var(--amber); }
+  .stage-card[data-stage="uat"]           .stage-count { color: var(--blue); }
+  .stage-card[data-stage="prod_build"]    .stage-count { color: var(--green); }
+  .stage-card[data-stage="dcr"]           .stage-count { color: var(--red); }
+
+  .stage-flows {
+    display: none;
+    border-top: 1px solid var(--border);
+    max-height: 260px;
+    overflow-y: auto;
+  }
+  .stage-card.open .stage-flows { display: block; }
+  .flow-row {
+    padding: 7px 14px;
+    border-bottom: 1px solid #f1f1f1;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 6px;
+    align-items: start;
+  }
+  .flow-row:last-child { border-bottom: none; }
+  .flow-name { font-size: 12px; font-weight: 500; word-break: break-word; }
+  .flow-meta { font-size: 10px; color: var(--gray); white-space: nowrap; text-align: right; }
+  .flow-phase {
+    display: inline-block;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 4px;
+    margin-bottom: 2px;
+  }
+  .phase-1 { background: #dbeafe; color: #1e40af; }
+  .phase-2 { background: #fce7f3; color: #9d174d; }
+  .phase-3 { background: #d1fae5; color: #065f46; }
+  .phase-out { background: #fef3c7; color: #92400e; }
+
+  /* ─── Phase breakdown ────────────────────────────────── */
+  .phase-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+  }
+  .phase-card {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .phase-card .ph-header {
+    padding: 12px 16px 10px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+  }
+  .phase-card .ph-title { font-weight: 700; font-size: 13px; }
+  .phase-card .ph-total { font-size: 28px; font-weight: 800; line-height: 1; }
+  .phase-card.p1 .ph-total { color: #1e40af; }
+  .phase-card.p2 .ph-total { color: #9d174d; }
+  .phase-card.p3 .ph-total { color: #065f46; }
+  .phase-card.out .ph-total { color: #92400e; }
+
+  .ph-sub { padding: 0 16px 12px; }
+  .ph-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    padding: 4px 0;
+    border-top: 1px solid #f1f1f1;
+    cursor: pointer;
+    color: #374151;
+  }
+  .ph-row:hover { background: var(--gray-lt); margin: 0 -16px; padding: 4px 16px; }
+  .ph-row .ph-lbl { font-weight: 500; }
+  .ph-row .ph-cnt { font-weight: 700; color: var(--blue); }
+
+  /* Phase flow list panel */
+  .ph-flow-panel {
+    display: none;
+    border-top: 1px solid var(--border);
+    background: var(--gray-lt);
+    max-height: 220px;
+    overflow-y: auto;
+    padding: 8px 14px;
+  }
+  .ph-flow-panel.open { display: block; }
+  .ph-flow-panel .panel-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .6px;
+    color: var(--gray);
+    margin-bottom: 6px;
+  }
+  .ph-flow-item {
+    font-size: 12px;
+    padding: 4px 0;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .ph-flow-item:last-child { border-bottom: none; }
+  .ph-flow-item .fi-name { font-weight: 500; }
+  .ph-flow-item .fi-owner { color: var(--gray); font-size: 11px; white-space: nowrap; }
+  .ph-flow-item .fi-status { color: var(--gray); font-size: 10px; }
+
+  /* ─── Two-col bottom section ─────────────────────────── */
+  .bottom-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  @media (max-width: 640px) { .bottom-grid { grid-template-columns: 1fr; } }
+
+  .panel {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .panel-title-bar {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    font-weight: 700;
+    font-size: 13px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .panel-body { padding: 14px 16px; }
+  .chart-wrap { position: relative; height: 220px; }
+
+  /* VA required pill */
+  .va-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 99px;
+  }
+  .va-yes { background: var(--amber-lt); color: var(--amber); }
+  .va-no  { background: var(--green-lt); color: var(--green); }
+
+  /* ─── Footer ─────────────────────────────────────────── */
+  footer {
+    text-align: center;
+    color: var(--gray);
+    font-size: 11px;
+    padding: 18px 28px 28px;
+  }
+</style>
+</head>
+<body>
+
+<!-- Data injected by Apps Script -->
+<script>
+  const ALL_FLOWS   = JSON.parse('<?= flowsJson ?>');
+  const STATS       = JSON.parse('<?= statsJson ?>');
+  const LAST_UPDATED = '<?= lastUpdated ?>';
+</script>
+
+<!-- ─── Header ─────────────────────────────────────────── -->
+<header>
+  <div>
+    <h1>Brightspeed CCaaS Migration Dashboard</h1>
+    <div class="sub">Google CCAI / GECX | Data refreshes on every page load</div>
+  </div>
+  <div>
+    <span class="badge-live">&#9679; LIVE</span>
+    <div style="font-size:11px;opacity:.6;margin-top:4px;text-align:right">Updated: <span id="ts"></span></div>
+  </div>
+</header>
+
+<!-- ─── DCR Banner ────────────────────────────────────────── -->
+<div class="dcr-banner" id="dcrBanner">
+  <span class="icon">&#9888;</span>
+  <span id="dcrText"></span>
+</div>
+
+<main>
+
+  <!-- ─── KPI Row ─────────────────────────────────────────── -->
+  <div class="section-label">Overview</div>
+  <div class="kpi-grid">
+    <div class="kpi">
+      <div class="num" id="kpiTotal"></div>
+      <div class="lbl">Total Active Flows</div>
+    </div>
+    <div class="kpi red">
+      <div class="num" id="kpiDCR"></div>
+      <div class="lbl">DCR Blocked</div>
+    </div>
+    <div class="kpi green">
+      <div class="num" id="kpiProd"></div>
+      <div class="lbl">In Production Build</div>
+    </div>
+    <div class="kpi">
+      <div class="num" id="kpiUAT"></div>
+      <div class="lbl">In UAT</div>
+    </div>
+    <div class="kpi amber">
+      <div class="num" id="kpiSIT"></div>
+      <div class="lbl">In SIT Build</div>
+    </div>
+    <div class="kpi">
+      <div class="num" id="kpiVA"></div>
+      <div class="lbl">VA Required</div>
+    </div>
+  </div>
+
+  <!-- ─── Pipeline Stages ──────────────────────────────────── -->
+  <div class="section-label">Pipeline Stages — click any card to view flows</div>
+  <div class="pipeline-grid" id="pipelineGrid"></div>
+
+  <!-- ─── Phase Breakdown ──────────────────────────────────── -->
+  <div class="section-label">Phase Breakdown — click rows to expand flow list</div>
+  <div class="phase-grid" id="phaseGrid"></div>
+
+  <!-- ─── Bottom panels ────────────────────────────────────── -->
+  <div class="section-label">Owner Workload &amp; VA Overview</div>
+  <div class="bottom-grid">
+
+    <div class="panel">
+      <div class="panel-title-bar">
+        <span>Owner Breakdown (top 10)</span>
+      </div>
+      <div class="panel-body">
+        <div class="chart-wrap">
+          <canvas id="ownerChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title-bar">
+        <span>Virtual Agent (VA Required)</span>
+        <span id="vaTotal" style="font-size:12px;color:var(--gray);font-weight:400"></span>
+      </div>
+      <div class="panel-body" id="vaPanel"></div>
+    </div>
+
+  </div>
+
+</main>
+
+<footer>
+  Source: Brightspeed Unified Flow List (A-Z) &nbsp;|&nbsp; Last loaded: <span id="ts2"></span>
+</footer>
+
+<script>
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+const STAGE_LABELS = {
+  design_review: 'Design / Review',
+  va_build:      'VA Build',
+  sit_build:     'SIT Build',
+  uat:           'UAT',
+  prod_build:    'Production Build',
+  dcr:           'DCR Hold',
+};
+
+const PHASE_CLASS = { 'Phase 1': 'phase-1', 'Phase 2': 'phase-2', 'Phase 3': 'phase-3', 'Outbound Flow': 'phase-out' };
+
+function phaseChip(phase) {
+  return `<span class="flow-phase ${PHASE_CLASS[phase] || ''}">${phase}</span>`;
+}
+
+function flowRows(flows) {
+  if (!flows.length) return '<div style="padding:8px 14px;font-size:12px;color:var(--gray)">No flows in this category.</div>';
+  return flows.map(f => `
+    <div class="flow-row">
+      <div>
+        ${f.phase ? phaseChip(f.phase) : ''}
+        <div class="flow-name">${f.name}</div>
+        <div class="flow-meta" style="text-align:left;font-size:10px;color:var(--gray)">${f.status}</div>
+      </div>
+      <div class="flow-meta">${f.owner}</div>
+    </div>`).join('');
+}
+
+// ─── Timestamps ──────────────────────────────────────────────────────────────
+document.getElementById('ts').textContent  = LAST_UPDATED;
+document.getElementById('ts2').textContent = LAST_UPDATED;
+
+// ─── DCR Banner ──────────────────────────────────────────────────────────────
+const dcrCount = STATS.stageCounts.dcr || 0;
+document.getElementById('dcrText').textContent =
+  `PROGRAM RISK — ${dcrCount} flow${dcrCount !== 1 ? 's' : ''} on hold for DCR (Dynamic Call Routing) sign-off. ` +
+  `This is the primary blocker for Phase 3 completion.`;
+
+// ─── KPIs ────────────────────────────────────────────────────────────────────
+document.getElementById('kpiTotal').textContent = STATS.total;
+document.getElementById('kpiDCR').textContent   = dcrCount;
+document.getElementById('kpiProd').textContent  = STATS.stageCounts.prod_build || 0;
+document.getElementById('kpiUAT').textContent   = STATS.stageCounts.uat || 0;
+document.getElementById('kpiSIT').textContent   = STATS.stageCounts.sit_build || 0;
+
+const vaCount = ALL_FLOWS.filter(f => f.va).length;
+document.getElementById('kpiVA').textContent = vaCount;
+
+// ─── Pipeline stages grid ─────────────────────────────────────────────────────
+const STAGE_ORDER = ['design_review', 'va_build', 'sit_build', 'uat', 'prod_build', 'dcr'];
+const pGrid = document.getElementById('pipelineGrid');
+
+STAGE_ORDER.forEach(stage => {
+  const count = STATS.stageCounts[stage] || 0;
+  const flows = STATS.stageFlows[stage]  || [];
+  const card  = document.createElement('div');
+  card.className = 'stage-card';
+  card.dataset.stage = stage;
+  card.innerHTML = `
+    <div class="stage-header">
+      <div>
+        <div class="stage-count">${count}</div>
+        <div class="stage-name">${STAGE_LABELS[stage]}</div>
+      </div>
+      <span class="arrow">&#9660;</span>
+    </div>
+    <div class="stage-flows">${flowRows(flows)}</div>`;
+
+  card.querySelector('.stage-header').addEventListener('click', () => {
+    card.classList.toggle('open');
+  });
+  pGrid.appendChild(card);
+});
+
+// ─── Phase breakdown ──────────────────────────────────────────────────────────
+function buildPhaseCard(phase, cssClass, rows) {
+  const total = STATS.phaseCounts[phase] || 0;
+  const card  = document.createElement('div');
+  card.className = `phase-card ${cssClass}`;
+
+  const rowsHtml = rows.map(([label, flows]) => `
+    <div class="ph-row" data-key="${label}">
+      <span class="ph-lbl">${label}</span>
+      <span class="ph-cnt">${flows.length}</span>
+    </div>
+    <div class="ph-flow-panel" id="panel-${cssClass}-${label.replace(/\s+/g,'_')}">
+      <div class="panel-title">${label}</div>
+      ${flows.map(f => `
+        <div class="ph-flow-item">
+          <div>
+            <div class="fi-name">${f.name}</div>
+            <div class="fi-status">${f.status}</div>
+          </div>
+          <div class="fi-owner">${f.owner}</div>
+        </div>`).join('')}
+    </div>`).join('');
+
+  card.innerHTML = `
+    <div class="ph-header">
+      <div><div class="ph-title">${phase}</div></div>
+      <div class="ph-total">${total}</div>
+    </div>
+    <div class="ph-sub">${rowsHtml}</div>`;
+
+  // Wire toggles
+  card.querySelectorAll('.ph-row').forEach(row => {
+    row.addEventListener('click', () => {
+      const key   = row.dataset.key;
+      const panel = document.getElementById(`panel-${cssClass}-${key.replace(/\s+/g,'_')}`);
+      if (!panel) return;
+      const open = panel.classList.toggle('open');
+      // close others in same card
+      if (open) {
+        card.querySelectorAll('.ph-flow-panel.open').forEach(p => {
+          if (p !== panel) p.classList.remove('open');
+        });
+      }
+    });
+  });
+
+  return card;
+}
+
+const phGrid = document.getElementById('phaseGrid');
+
+phGrid.appendChild(buildPhaseCard('Phase 1', 'p1', [
+  ['Production Build', STATS.ph1Prod],
+  ['UAT',             STATS.ph1UAT],
+]));
+
+phGrid.appendChild(buildPhaseCard('Phase 2', 'p2', [
+  ['UAT (Ready)',     STATS.ph2UAT],
+  ['Not Ready for UAT', STATS.ph2NotUAT],
+]));
+
+phGrid.appendChild(buildPhaseCard('Phase 3', 'p3', [
+  ['DCR Hold',        STATS.ph3DCR],
+  ['In Build / Other',STATS.ph3Build],
+]));
+
+// Outbound
+const outTotal = STATS.phaseCounts['Outbound Flow'] || 0;
+const outFlows = ALL_FLOWS.filter(f => f.phase === 'Outbound Flow');
+const outCard  = document.createElement('div');
+outCard.className = 'phase-card out';
+outCard.innerHTML = `
+  <div class="ph-header">
+    <div><div class="ph-title">Outbound Flow</div></div>
+    <div class="ph-total">${outTotal}</div>
+  </div>
+  <div class="ph-sub">
+    <div class="ph-row" data-key="all">
+      <span class="ph-lbl">All Outbound</span>
+      <span class="ph-cnt">${outTotal}</span>
+    </div>
+    <div class="ph-flow-panel" id="panel-out-all">
+      <div class="panel-title">Outbound Flows</div>
+      ${outFlows.map(f => `
+        <div class="ph-flow-item">
+          <div>
+            <div class="fi-name">${f.name}</div>
+            <div class="fi-status">${f.status}</div>
+          </div>
+          <div class="fi-owner">${f.owner}</div>
+        </div>`).join('')}
+    </div>
+  </div>`;
+outCard.querySelector('.ph-row').addEventListener('click', () => {
+  document.getElementById('panel-out-all').classList.toggle('open');
+});
+phGrid.appendChild(outCard);
+
+// ─── Owner Chart ──────────────────────────────────────────────────────────────
+const owners = STATS.ownersSorted || [];
+new Chart(document.getElementById('ownerChart'), {
+  type: 'bar',
+  data: {
+    labels:   owners.map(([o]) => o),
+    datasets: [{
+      label:           'Flows',
+      data:            owners.map(([, c]) => c),
+      backgroundColor: '#1a4fa3cc',
+      borderRadius:    4,
+    }]
+  },
+  options: {
+    indexAxis: 'y',
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { grid: { color: '#f0f0f0' }, ticks: { font: { size: 11 } } },
+      y: { ticks: { font: { size: 11 } } },
+    }
+  }
+});
+
+// ─── VA Panel ─────────────────────────────────────────────────────────────────
+const vaPanel  = document.getElementById('vaPanel');
+const vaFlows  = ALL_FLOWS.filter(f => f.va);
+const noVaFlows = ALL_FLOWS.filter(f => !f.va);
+
+document.getElementById('vaTotal').textContent = `${vaFlows.length} of ${ALL_FLOWS.length} flows`;
+
+// Group VA by phase
+const vaByPhase = {};
+vaFlows.forEach(f => {
+  (vaByPhase[f.phase] = vaByPhase[f.phase] || []).push(f);
+});
+
+const VA_PHASE_ORDER = ['Phase 1', 'Phase 2', 'Phase 3', 'Outbound Flow'];
+const vaByPhaseOrdered = VA_PHASE_ORDER.filter(p => vaByPhase[p]).map(p => [p, vaByPhase[p]]);
+
+vaPanel.innerHTML = vaByPhaseOrdered.map(([phase, flows]) => `
+  <div style="margin-bottom:10px">
+    <div style="display:flex;justify-content:space-between;align-items:center;
+                margin-bottom:5px;cursor:pointer" class="va-phase-row"
+         data-phase="${phase.replace(/\s+/g,'_')}">
+      <span style="font-weight:600;font-size:12px">${phase}</span>
+      <span class="va-pill va-yes">${flows.length} VA</span>
+    </div>
+    <div class="ph-flow-panel" id="va-panel-${phase.replace(/\s+/g,'_')}">
+      <div class="panel-title">Requires Virtual Agent</div>
+      ${flows.map(f => `
+        <div class="ph-flow-item">
+          <div>
+            <div class="fi-name">${f.name}</div>
+            <div class="fi-status">${f.status}</div>
+          </div>
+          <div class="fi-owner">${f.owner}</div>
+        </div>`).join('')}
+    </div>
+  </div>`).join('');
+
+vaPanel.querySelectorAll('.va-phase-row').forEach(row => {
+  row.addEventListener('click', () => {
+    const panel = document.getElementById(`va-panel-${row.dataset.phase}`);
+    if (panel) panel.classList.toggle('open');
+  });
+});
+
+</script>
+</body>
+</html>
